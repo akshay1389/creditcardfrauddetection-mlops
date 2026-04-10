@@ -1,142 +1,255 @@
-# Credit Card Fraud Detection System with MLOps Integration
-_Maintained by Akshay Basavalingaiah_
----
+# Credit Card Fraud Detection -- MLOps Pipeline
 
-## **Project Overview**
-
-This project is focused on building a Credit Card Fraud Detection System that utilizes machine learning techniques to detect fraudulent transactions. The project will incorporate MLOps practices to ensure the entire lifecycle of the machine learning model is automated and scalable. The project also includes a real-time dashboard for visualizing fraud detection insights.
-Features
-
-- **Data Ingestion & Preprocessing**: Automated data pipeline for ingesting and cleaning transaction data.
-- **Fraud Detection Models**: Supervised (Logistic Regression, Decision Trees) and Unsupervised (Clustering) models to detect fraud.
-- **Model Deployment**: Dockerized machine learning models with continuous integration and deployment (CI/CD).
-- **Model Monitoring**: Real-time performance monitoring using Prometheus and Grafana.
-- **Dashboard**: Interactive dashboard for real-time visualization of results.
-
-## **Tech Stack**
-- **Backend**: Flask (Python)
-- **Machine Learning Model**: Logistic Regression, Random Forest, XGBoost
-- **Frontend**: HTML, CSS
-- **Data Preprocessing**: Pandas, Scikit-learn (Standard Scaler for feature scaling)
-- **Deployment**: Docker (For easy containerization)
-- **Future Deployment Plans**: Google Cloud, Vercel, or Azure for hosting
+An end-to-end machine learning operations (MLOps) pipeline for detecting fraudulent credit card transactions. The system trains and serves multiple classification models behind a Flask web interface and uses LLM-powered natural language explanations to make predictions interpretable.
 
 ---
 
-## **How It Works**
+## Features
 
-The application allows users to:
-- **Select a Machine Learning Model**: Choose between Logistic Regression, Random Forest, and XGBoost.
-- **Enter Transaction Features**: Users input transaction details (features, time, and amount).
-- **Get Fraud Predictions**: The app predicts whether the transaction is fraudulent or not.
-- **Receive Explanation**: Uses **LangChain/OpenAI** API to generate a natural language explanation of the prediction.
-  
-### **Features**
-- **Risk Segmentation**: Allows users to classify transactions as high-risk, medium-risk, or low-risk based on model predictions.
-- **Fraud Probability**: Displays the likelihood of a transaction being fraudulent as a percentage, helping users gauge model confidence.
-- **Graphs and Visualizations** (Future Work): Planned visualizations to help users understand patterns in transaction risks.
-  
+- **Multi-model inference** -- choose between Logistic Regression, Random Forest, and XGBoost at prediction time.
+- **SMOTE-based class balancing** -- handles the extreme class imbalance inherent in fraud datasets using Synthetic Minority Over-sampling.
+- **Configurable cross-validation** -- supports KFold, StratifiedKFold, and Leave-One-Out validation strategies.
+- **LLM-powered explainability** -- generates natural language explanations for each prediction via OpenAI (GPT-3.5-Turbo) and LangChain.
+- **Experiment tracking** -- logs parameters, metrics (accuracy, precision, recall, F1), ROC curves, and model artifacts to MLflow.
+- **Data version control** -- tracks large data files with DVC so the dataset stays reproducible without bloating the repository.
+- **Interactive web dashboard** -- a Flask-based UI where users enter transaction features, select a model, and receive a fraud/not-fraud prediction with probability and explanation.
+- **Docker-ready** -- ships with a production Dockerfile targeting Google Cloud Run.
+- **Feature scaling** -- StandardScaler applied to Time and Amount features; scaler persisted alongside model artifacts.
+
 ---
 
-## **Getting Started**
+## Tech Stack
 
-### **Prerequisites**
-- Python 3.11 (or higher)
-- Docker (for containerization and deployment)
-- Optional: Google Cloud or other cloud platforms if deploying the app
+| Layer              | Technology                                              |
+| ------------------ | ------------------------------------------------------- |
+| Language           | Python 3.12                                             |
+| Web Framework      | Flask                                                   |
+| ML Models          | scikit-learn (Logistic Regression, Random Forest), XGBoost |
+| Class Balancing    | imbalanced-learn (SMOTE)                                |
+| Explainability     | LangChain + OpenAI GPT-3.5-Turbo                       |
+| Experiment Tracking| MLflow                                                  |
+| Data Versioning    | DVC                                                     |
+| Containerization   | Docker                                                  |
+| Deployment Target  | Google Cloud Run                                        |
+| Monitoring (deps)  | Prometheus Client, Grafana API                          |
+| Testing            | pytest                                                  |
 
-### **1. Clone the Repository**
+---
 
-```bash
-git clone https://github.com/yourusername/creditCardFraudDetection.git
-cd creditCardFraudDetection
+## Architecture / How It Works
+
+```
+                         +------------------+
+                         |   Raw Dataset    |
+                         | (creditcard.csv) |
+                         +--------+---------+
+                                  |
+                          DVC-tracked data
+                                  |
+                    +-------------v--------------+
+                    |   Data Ingestion & Prep    |
+                    |  src/data_ingestion.py     |
+                    |  - Load CSV                |
+                    |  - Scale Time & Amount     |
+                    |  - Save StandardScaler     |
+                    +-------------+--------------+
+                                  |
+                    +-------------v--------------+
+                    |   Model Training           |
+                    |  src/train.py              |
+                    |  - SMOTE oversampling      |
+                    |  - Cross-validation        |
+                    |  - Train LR / RF / XGB     |
+                    |  - Log to MLflow           |
+                    |  - Save .pkl artifacts     |
+                    |  - Plot ROC curves         |
+                    +-------------+--------------+
+                                  |
+                    +-------------v--------------+
+                    |   Flask Web Application    |
+                    |  app.py                    |
+                    |  - Load saved models       |
+                    |  - Accept user input       |
+                    |  - Return prediction +     |
+                    |    probability + LLM       |
+                    |    explanation              |
+                    +----------------------------+
 ```
 
-### **2. Set Up the Virtual Environment**
+1. **Data Ingestion** -- `src/data_ingestion.py` loads the raw Kaggle credit card dataset, scales the `Time` and `Amount` columns with `StandardScaler`, drops the originals, and persists the scaler as `models/scaler.pkl`.
+2. **Training** -- `src/train.py` splits data 80/20, applies SMOTE to the training set, then trains Logistic Regression, Random Forest, and XGBoost. Each run is logged to MLflow with accuracy, precision, recall, F1-score, and a ROC curve artifact. Serialized models are saved under `models/`.
+3. **Serving** -- `app.py` loads the three pre-trained models and scaler at startup. Users submit transaction features through the web form, choose a model, and receive a fraud/not-fraud prediction with probability. An LLM explanation is generated on the fly via LangChain.
+
+---
+
+## Project Structure
+
+```
+creditcardfrauddetection-mlops/
+|-- app.py                          # Flask application (prediction + LLM explanation)
+|-- Dockerfile                      # Production container image (Python 3.12-slim)
+|-- requirements.txt                # Python dependencies
+|-- .dockerignore                   # Files excluded from Docker build context
+|-- .dvc/                           # DVC configuration
+|   |-- config
+|   +-- .gitignore
+|-- .dvcignore
+|-- .gitattributes
+|-- .gitignore
+|-- data/
+|   +-- raw/
+|       |-- creditcard.csv.dvc      # DVC pointer to the raw dataset
+|       +-- .gitignore
+|-- models/
+|   |-- LogisticRegression_model.pkl
+|   |-- RandomForest_model.pkl
+|   |-- XGBoost_model.pkl
+|   |-- scaler.pkl
+|   |-- LogisticRegression_roc_curve.png
+|   |-- RandomForest_roc_curve.png
+|   +-- XGBoost_roc_curve.png
+|-- notebooks/
+|   |-- data_analysis.ipynb
+|   +-- fraud_detection_modeling.ipynb
+|-- src/
+|   |-- data_ingestion.py           # Data loading and preprocessing
+|   +-- train.py                    # Model training, evaluation, and MLflow logging
+|-- static/
+|   +-- css/
+|       +-- style.css               # Dashboard styling
+|-- templates/
+|   +-- index.html                  # Fraud Detection Dashboard UI
++-- README.md
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12+
+- pip
+- (Optional) Docker
+- (Optional) DVC, if you need to pull the raw dataset
+- An OpenAI API key (required for LLM-based prediction explanations)
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/akshay1389/creditcardfrauddetection-mlops.git
+cd creditcardfrauddetection-mlops
+
+# Create and activate a virtual environment
 python -m venv venv
-source venv/bin/activate  # For macOS/Linux
-# OR
-venv\Scripts\activate  # For Windows
-```
+source venv/bin/activate   # On Windows: venv\Scripts\activate
 
-### **3. Install Dependencies**
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### **4. Set Up the Environment Variables**
+### Environment Variables
 
-Create a `.env` file and add your OpenAI API key (for explanation generation via LangChain).
+Create a `.env` file in the project root:
 
-```bash
-OPENAI_API_KEY=your-api-key
+```
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-### **5. Run the Flask App**
+### Pulling the Dataset (DVC)
 
-You can now start the Flask server locally.
+If the raw dataset is stored in a DVC remote, pull it with:
 
 ```bash
-flask run
+dvc pull
 ```
 
-The app will be accessible at `https://127.0.0.1:5000`.
+This will download `data/raw/creditcard.csv`.
 
-### **6. Build and Run with Docker (Optional)**
-
-To build with Docker image:
+### Training the Models
 
 ```bash
-docker build -t my-flask-app .
+python src/train.py
 ```
 
-To run with Docker container:
+This will:
+- Load and preprocess the dataset.
+- Apply SMOTE to balance classes.
+- Train Logistic Regression, Random Forest, and XGBoost.
+- Log all runs to MLflow (viewable at `http://localhost:5000` via `mlflow ui`).
+- Save model `.pkl` files and ROC curve plots to `models/`.
+
+### Running the Application
 
 ```bash
-docker run -d -p 5000:5000 my-flask-app
+python app.py
 ```
 
-### **7. Make Predictions**
+The Flask server starts on `http://0.0.0.0:8080`. Open a browser and navigate to `http://localhost:8080` to access the Fraud Detection Dashboard.
 
-Navigate to the app in your browser and enter transaction details:
+---
 
-- **Select a model**: Choose from Logistic Regression, Random Forest, or XG Boost.
-- **Enter Transaction Features**: Input transaction features (28 features), time, and amount.
+## Docker
 
-**Testing via cURL**
-
-You can also make predictions using `cURL`:
+### Build the Image
 
 ```bash
-curl -X POST http://127.0.0.1:5000/predict \
-    -d "features=1.0,-1.2,0.5,2.3,-0.7,0.1,-0.4,1.5,0.9,0.2,0.8,-0.6,0.3,-0.2,-1.0,0.5,0.1,-0.7,0.2,1.1,-0.3,-0.8,1.4,0.6,0.4,-1.3,0.1,4.6" \
-    -d "time=12000" \
-    -d "amount=100.0" \
-    -d "model=Logistic Regression"
+docker build -t credit-card-fraud-detection .
+```
+
+### Run the Container
+
+```bash
+docker run -p 8080:8080 \
+  -e OPENAI_API_KEY=your_openai_api_key_here \
+  credit-card-fraud-detection
+```
+
+The application will be available at `http://localhost:8080`.
+
+### Deploy to Google Cloud Run
+
+The Dockerfile is configured to expose port 8080, which is the default expected by Google Cloud Run:
+
+```bash
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/credit-card-fraud-detection
+gcloud run deploy credit-card-fraud-detection \
+  --image gcr.io/YOUR_PROJECT_ID/credit-card-fraud-detection \
+  --platform managed \
+  --set-env-vars OPENAI_API_KEY=your_openai_api_key_here \
+  --allow-unauthenticated
 ```
 
 ---
 
-## Future Work
+## Screenshots
 
-- [ ] **Enhanced Visualization**: Incorporate Plotly graphs and charts.
-- [ ] **Interactive Transaction Exploration**: Allow users to upload transaction datasets and receive a batch analysis of potential fraud cases.
-- [ ] **Real-Time Fraud Detection**: Integrate with APIs to perform real-time fraud detection on live transactions. (Or perform Simulation)
-- [ ] **Model Tuning**: Hyperparameter Tuning and Model Evaluation
-- [ ] **Deploy on Cloud**
+> Screenshots of the Fraud Detection Dashboard will be added here.
+
+| View                     | Screenshot               |
+| ------------------------ | ------------------------ |
+| Dashboard (input form)   | _placeholder_            |
+| Prediction result        | _placeholder_            |
+| MLflow experiment runs   | _placeholder_            |
 
 ---
 
-## About the Developer
+## Future Enhancements
 
-This project is maintained by Akshay Basavalingaiah, a Backend Software Engineer with 3+ years of professional experience. Akshay specializes in building scalable APIs, microservices, and distributed systems across cloud environments. He possesses strong expertise in Golang, Java, Python, and backend service design, with hands-on experience in AWS, Docker, and CI/CD pipelines. His experience includes improving system performance, reliability, and observability in production environments, and developing data processing workflows.
+- **CI/CD pipeline** -- Add GitHub Actions workflows for automated testing, linting, and container builds on every push.
+- **Model monitoring** -- Integrate Prometheus and Grafana dashboards (dependencies already included) to track prediction latency, throughput, and data drift in production.
+- **Real-time streaming** -- Ingest transactions from Apache Kafka or Pub/Sub for low-latency, event-driven fraud scoring.
+- **Additional models** -- Incorporate deep learning approaches (e.g., autoencoders, LSTM) using the TensorFlow dependency already in the stack.
+- **Feature store** -- Centralize feature engineering with a feature store (e.g., Feast) to share features across training and serving.
+- **A/B testing** -- Serve multiple model versions simultaneously and route traffic to compare performance in production.
+- **Hyperparameter tuning** -- Add Optuna or Ray Tune integration for automated hyperparameter optimization with MLflow tracking.
+- **UMAP visualization** -- Leverage the umap-learn dependency to build interactive dimensionality-reduction plots of fraud vs. legitimate clusters.
+- **Authentication and RBAC** -- Secure the web dashboard with user authentication and role-based access control for enterprise deployments.
+- **Batch prediction mode** -- Support CSV upload for bulk transaction scoring in addition to the single-transaction form.
 
-**Key Skills**: Golang, Java, Python, Spring Boot, FastAPI
+---
 
-**Contact**:
-- Email: akshayb220194@gmail.com
-- GitHub: Akshay Basavalingaiah
-- LinkedIn: Akshay Basavalingaiah
+## License
+
+This project is provided as-is for educational and research purposes. See the repository for any license information.
